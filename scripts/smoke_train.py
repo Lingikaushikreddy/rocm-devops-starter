@@ -32,7 +32,7 @@ def pick_device(requested: str) -> str:
 
 
 def build_model(hidden: int, features: int, classes: int):
-    import torch.nn as nn
+    from torch import nn
 
     return nn.Sequential(
         nn.Linear(features, hidden),
@@ -45,7 +45,7 @@ def build_model(hidden: int, features: int, classes: int):
 
 def run(args) -> int:
     import torch
-    import torch.nn as nn
+    from torch import nn
 
     device = pick_device(args.device)
     torch.manual_seed(args.seed)
