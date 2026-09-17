@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check scripts/
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # GitHub's hosted runners have no AMD GPU, so CI exercises the CPU path
+      # only. That still catches every import error, API change and logic bug -
+      # the GPU-specific behaviour has to be verified on Developer Cloud, and
+      # docs/RUNBOOK.md records how.
+      - name: Install CPU torch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Probe reports cleanly
+        run: python scripts/gpu_probe.py
+
+      - name: Probe emits valid JSON
+        run: python scripts/gpu_probe.py --json | python -c "import json,sys; json.load(sys.stdin)"
+
+      - name: Smoke train converges on CPU
+        run: python scripts/smoke_train.py --device cpu --steps 200
+
+      - name: Smoke train detects a non-learning stack
+        run: |
+          if python scripts/smoke_train.py --device cpu --steps 5; then
+            echo "::error::smoke_train exited 0 on a run that cannot learn"
+            exit 1
+          fi
+          echo "correctly exited non-zero"
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Validates compose syntax without pulling the multi-GB ROCm base image.
+      - run: docker compose -f docker/docker-compose.yml config --quiet

@@ -1,0 +1,4 @@
+# torch is intentionally NOT pinned here. On AMD you must install it from the
+# ROCm wheel index, and the ROCm base image already ships a matching build.
+# Adding torch to this file would overwrite the image's ROCm build with a
+# CPU-only wheel from PyPI - the single most common way to break a ROCm image.

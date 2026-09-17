@@ -1,0 +1,22 @@
+.PHONY: help probe smoke lint build up clean
+
+help:
+	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+probe:  ## Report the local accelerator stack
+	python scripts/gpu_probe.py
+
+smoke:  ## Run the tiny training smoke test
+	python scripts/smoke_train.py
+
+lint:  ## Lint the scripts
+	ruff check scripts/
+
+build:  ## Build the ROCm image
+	docker compose -f docker/docker-compose.yml build
+
+up:  ## Run the probe inside the ROCm container
+	docker compose -f docker/docker-compose.yml run --rm rocm
+
+clean:  ## Remove local venvs and caches
+	rm -rf .venv-test **/__pycache__ .ruff_cache

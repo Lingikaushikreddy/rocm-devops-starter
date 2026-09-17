@@ -1,0 +1,30 @@
+# Base image is AMD's official ROCm + PyTorch build. Pin this to a concrete tag
+# for anything you care about reproducing - `latest` moves and will eventually
+# change your ROCm version underneath you.
+#
+#   docker build --build-arg ROCM_PYTORCH_IMAGE=rocm/pytorch:rocm6.2_ubuntu22.04_py3.10_pytorch_release_2.3.0 ...
+#
+# Available tags: https://hub.docker.com/r/rocm/pytorch/tags
+ARG ROCM_PYTORCH_IMAGE=rocm/pytorch:latest
+FROM ${ROCM_PYTORCH_IMAGE}
+
+# gfx arch of the target card. Leave unset to let ROCm autodetect; set it when
+# building for a card whose arch is not in the base image's compiled set, which
+# is the usual reason a consumer Radeon "sees" the GPU but fails every kernel.
+#   MI300X -> gfx942 | MI250X -> gfx90a | RX 7900 -> gfx1100
+ARG PYTORCH_ROCM_ARCH=""
+ENV PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH}
+
+WORKDIR /workspace
+
+# Dependency layer first so source edits do not invalidate the pip cache.
+COPY requirements.txt /workspace/requirements.txt
+RUN python -m pip install --no-cache-dir -r /workspace/requirements.txt
+
+COPY scripts/ /workspace/scripts/
+
+# Fail the build if the image cannot even import torch. Cheap, and it turns a
+# confusing runtime error into an obvious build error.
+RUN python -c "import torch; print('torch', torch.__version__, 'hip', torch.version.hip)"
+
+CMD ["python", "scripts/gpu_probe.py"]

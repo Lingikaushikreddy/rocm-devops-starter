@@ -1,0 +1,25 @@
+# ROCm containers need explicit access to the kernel driver. The four settings
+# below are the ones people miss; without them the container starts fine and
+# then reports zero devices.
+services:
+  rocm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rocm
+      args:
+        ROCM_PYTORCH_IMAGE: ${ROCM_PYTORCH_IMAGE:-rocm/pytorch:latest}
+        PYTORCH_ROCM_ARCH: ${PYTORCH_ROCM_ARCH:-}
+    devices:
+      - /dev/kfd    # the ROCm compute driver interface
+      - /dev/dri    # the render nodes
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp:unconfined
+    ipc: host           # needed for multi-worker dataloaders
+    shm_size: 8gb       # the default 64MB will kill any real dataloader
+    volumes:
+      - ../:/workspace
+    working_dir: /workspace
+    command: python scripts/gpu_probe.py
