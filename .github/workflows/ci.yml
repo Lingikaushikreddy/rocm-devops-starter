@@ -47,6 +47,17 @@ jobs:
       - name: Smoke train converges on CPU
         run: python scripts/smoke_train.py --device cpu --steps 200
 
+      - name: Report generator refuses to invent results
+        run: |
+          if python scripts/make_report.py; then
+            echo "::error::make_report produced a hardware report with no GPU"
+            exit 1
+          fi
+          echo "correctly refused"
+
+      - name: Report template renders
+        run: python scripts/make_report.py --template
+
       - name: Smoke train detects a non-learning stack
         run: |
           if python scripts/smoke_train.py --device cpu --steps 5; then

@@ -1,4 +1,4 @@
-.PHONY: help probe smoke lint build up clean
+.PHONY: help probe smoke report lint build up clean
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -8,6 +8,9 @@ probe:  ## Report the local accelerator stack
 
 smoke:  ## Run the tiny training smoke test
 	python scripts/smoke_train.py
+
+report:  ## Generate a forum post from a real probe run (needs a GPU)
+	python scripts/make_report.py
 
 lint:  ## Lint the scripts
 	ruff check scripts/
