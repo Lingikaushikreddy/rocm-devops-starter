@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import re
@@ -199,6 +200,13 @@ def fp8_roundtrip(device: str = "cpu") -> dict:
             results[name] = {"available": False}
             continue
         try:
+            finfo = torch.finfo(dt)
+            # Masking code fills with -inf. The fnuz variants have no infinity,
+            # so that fill silently becomes NaN and poisons the tensor. This is
+            # the same root cause that stops vLLM's fp8 path starting on gfx942:
+            # Inductor emits tl.full(..., -inf, fp8) and the lowering rejects it.
+            neg_inf = torch.tensor([float("-inf")], dtype=torch.float32,
+                                   device=device).to(dt).to(torch.float32).item()
             src = torch.tensor(ROUNDTRIP_PROBES, dtype=torch.float32, device=device)
             back = src.to(dt).to(torch.float32).tolist()
             # No probe value is NaN, so a straight inequality is enough:
@@ -208,9 +216,12 @@ def fp8_roundtrip(device: str = "cpu") -> dict:
                     if b != v]
             results[name] = {
                 "available": True,
+                "max": finfo.max,
                 "roundtrip": back,
                 "lossless": not lost,
                 "values_lost": lost,
+                "neg_inf_becomes": neg_inf,
+                "has_infinity": neg_inf == float("-inf"),
             }
         except Exception as exc:  # noqa: BLE001
             results[name] = {"available": True,
@@ -294,11 +305,18 @@ def print_human(report: dict) -> None:
                 print(f"  {name:<18} not in this torch build")
             elif "error" in res:
                 print(f"  {name:<18} {res['error']}")
-            elif res["lossless"]:
-                print(f"  {name:<18} lossless")
             else:
-                print(f"  {name:<18} LOSSY -> {res['roundtrip']}")
-                print(f"  {'':<18} destroys {res['values_lost']}")
+                verdict = "lossless" if res["lossless"] else f"LOSSY, destroys {res['values_lost']}"
+                print(f"  {name:<18} max={res['max']:<9} {verdict}")
+                nb = res["neg_inf_becomes"]
+                if res["has_infinity"]:
+                    pass
+                elif math.isnan(nb):
+                    print(f"  {'':<18} NO INFINITY: -inf becomes NaN")
+                    print(f"  {'':<18} ^ an -inf mask fill poisons the tensor here")
+                else:
+                    print(f"  {'':<18} no infinity: -inf saturates to {nb}")
+                    print(f"  {'':<18} ^ mask fills still work, but are finite")
 
 
 def main() -> int:
