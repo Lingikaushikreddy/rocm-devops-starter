@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import re
+import warnings
 from pathlib import PurePosixPath
 
 from .rules import Finding
@@ -116,7 +117,11 @@ _FP8_FN_DTYPES = frozenset({"float8_e4m3fn", "float8_e5m2"})
 def collect_python(path: str, source: str) -> list[Finding]:
     """Findings in a Python file. Never imports or executes it."""
     try:
-        tree = ast.parse(source)
+        # The scanned code's own warnings (invalid escapes and the like) are
+        # its business, not ours; letting them through floods stderr.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(source)
     except (SyntaxError, ValueError):
         # Python 2 files, templates and stray null bytes all turn up in real
         # repositories. None of them can be judged, and none should stop a scan.

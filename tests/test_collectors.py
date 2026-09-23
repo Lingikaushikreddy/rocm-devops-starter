@@ -1,3 +1,5 @@
+import warnings
+
 from rocm_portscan.collectors import collect_python, collect_text
 from rocm_portscan.rules import Finding
 
@@ -78,3 +80,12 @@ def test_fnuz_dtypes_are_not_flagged():
 def test_nccl_is_case_insensitive_and_other_backends_are_silent():
     assert rule_lines(collect_python("d.py", "init_process_group('NCCL')\n"), "ROCM200") == [1]
     assert collect_python("d.py", "init_process_group(backend='gloo')\n") == []
+
+
+def test_warnings_from_scanned_code_are_not_printed():
+    # Real repositories are full of invalid escapes like "\d" in plain
+    # strings; ast.parse warns about each one, and a scan must not echo them.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        collect_python("m.py", 'import re\nPAT = re.compile("\\d+")\n')
+    assert [str(w.message) for w in caught] == []
