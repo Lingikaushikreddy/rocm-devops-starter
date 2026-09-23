@@ -1,0 +1,3 @@
+# apex is optional; on AMD install ROCm/apex instead
+apex-lite==0.1
+rapex==1.0

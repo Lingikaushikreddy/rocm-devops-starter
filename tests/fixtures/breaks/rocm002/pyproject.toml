@@ -1,0 +1,3 @@
+[project]
+name = "demo"
+dependencies = ["transformer_engine[pytorch]>=1.9"]
