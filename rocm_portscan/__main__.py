@@ -39,7 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.format == "json":
         output = render_json(findings, min_tier)
     elif args.format == "markdown":
-        output = render_markdown(findings, min_tier, target=root.resolve().name)
+        output = render_markdown(
+            findings, min_tier, target=root.resolve().name, excluded=args.exclude
+        )
     else:
         output = render_terminal(findings, min_tier)
     sys.stdout.write(output)

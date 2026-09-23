@@ -89,3 +89,9 @@ def test_warnings_from_scanned_code_are_not_printed():
         warnings.simplefilter("always")
         collect_python("m.py", 'import re\nPAT = re.compile("\\d+")\n')
     assert [str(w.message) for w in caught] == []
+
+
+def test_pathologically_deep_python_is_skipped_not_fatal():
+    # A long enough operator chain makes ast.parse raise RecursionError.
+    source = "x = " + "+".join(["1"] * 200_000) + "\nimport apex\n"
+    assert collect_python("deep.py", source) == []

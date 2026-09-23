@@ -71,3 +71,15 @@ def test_markdown_neutralises_backticks_in_snippets():
 def test_selftest_proof_is_described_as_runnable():
     md = render_markdown([Finding("q.py", 2, "ROCM005", "w.to(torch.float8_e4m3fn)")], target="demo")
     assert "rocm_portscan.proofs.fn_max_overflows_fnuz()" in md
+
+
+def test_markdown_states_what_was_not_scanned():
+    md = render_markdown(FINDINGS, target="demo", excluded=["examples", "tests"])
+    assert "Excluded by request: `examples`, `tests`." in md
+    assert "node_modules" in md and "symlinks" in md and "2 MB" in md
+
+
+def test_markdown_scope_line_without_excludes():
+    md = render_markdown(FINDINGS, target="demo")
+    assert "Excluded by request" not in md
+    assert "node_modules" in md

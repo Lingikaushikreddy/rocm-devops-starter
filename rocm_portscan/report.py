@@ -12,6 +12,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 
 from .rules import RULES, Finding, Tier
+from .scan import MAX_BYTES, PRUNED_DIRS, normalise_excludes
 
 HEADINGS = {
     Tier.BLOCKER: "Breaks on ROCm",
@@ -57,7 +58,10 @@ def render_json(findings: Sequence[Finding], min_tier: Tier = Tier.REVIEW) -> st
 
 
 def render_markdown(
-    findings: Sequence[Finding], min_tier: Tier = Tier.REVIEW, target: str = ""
+    findings: Sequence[Finding],
+    min_tier: Tier = Tier.REVIEW,
+    target: str = "",
+    excluded: Sequence[str] = (),
 ) -> str:
     out = [
         f"# ROCm portability report: {target}",
@@ -65,6 +69,8 @@ def render_markdown(
         "Static analysis by rocm_portscan. Nothing here was run on AMD hardware.",
         'Only "Breaks on ROCm" asserts a failure, and each rule there cites its proof.',
         "Everything else is a pointer for a person to check.",
+        "",
+        _scope(excluded),
         "",
         f"**Summary:** {_summary(findings)}",
     ]
@@ -91,6 +97,18 @@ def render_markdown(
             if len(hits) > MAX_LOCATIONS:
                 out.append(f"- ... and {len(hits) - MAX_LOCATIONS} more")
     return "\n".join(out) + "\n"
+
+
+def _scope(excluded: Sequence[str]) -> str:
+    # A report about a subset of a repository has to say which subset.
+    line = (
+        f"Not scanned: directories named {', '.join(f'`{d}`' for d in sorted(PRUNED_DIRS))}; "
+        f"symlinks; binary files; files over {MAX_BYTES // 1_000_000} MB."
+    )
+    patterns = normalise_excludes(excluded)
+    if patterns:
+        line += " Excluded by request: " + ", ".join(f"`{p}`" for p in patterns) + "."
+    return line
 
 
 def _visible(findings: Sequence[Finding], min_tier: Tier) -> list[Finding]:

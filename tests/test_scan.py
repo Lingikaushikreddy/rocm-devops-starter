@@ -94,3 +94,16 @@ def test_findings_are_sorted_and_deduplicated(monkeypatch, tmp_path):
         Finding("a.txt", 1, "ROCM001", "x"),
         Finding("b.txt", 1, "ROCM001", "x"),
     ]
+
+
+@pytest.mark.parametrize("pattern", ["examples/", "./examples", "examples"])
+def test_exclude_accepts_directory_spellings(monkeypatch, tmp_path, pattern):
+    write(tmp_path / "examples" / "requirements.txt")
+    write(tmp_path / "keep.txt")
+    assert visited(monkeypatch, tmp_path, exclude=[pattern]) == ["keep.txt"]
+
+
+def test_bare_exclude_name_matches_at_any_depth(monkeypatch, tmp_path):
+    write(tmp_path / "csrc" / "third_party" / "requirements.txt")
+    write(tmp_path / "csrc" / "ops.cu")
+    assert visited(monkeypatch, tmp_path, exclude=["third_party"]) == ["csrc/ops.cu"]

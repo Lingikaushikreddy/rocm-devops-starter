@@ -75,9 +75,11 @@ _RULES = (
         "ROCM005",
         Tier.REVIEW,
         "hardcoded `float8_e4m3fn` / `float8_e5m2`",
-        "gfx942 (MI300) executes e4m3fnuz, which caps at 240 and has no "
-        "infinity. Values quantised for e4m3fn (max 448) overflow to NaN "
-        "there. Check whether these weights will meet fnuz hardware.",
+        "gfx942 (MI300) executes the fnuz fp8 formats. e4m3fnuz caps at 240 "
+        "where e4m3fn allows 448, and neither e4m3fnuz nor e5m2fnuz has an "
+        "infinity, so out-of-range e4m3fn values and any infinity in e5m2 "
+        "data become NaN there. Check whether these tensors will meet fnuz "
+        "hardware.",
         proof="selftest:fn_max_overflows_fnuz",
     ),
     Rule(

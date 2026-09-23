@@ -30,9 +30,12 @@ def scan(root: Path, exclude: Sequence[str] = ()) -> list[Finding]:
     """Every finding under root, sorted by path, line and rule.
 
     exclude holds fnmatch globs matched against paths relative to root. A
-    directory that matches is not entered.
+    pattern without a slash also matches any single path component, so
+    "third_party" skips every directory of that name. A directory that matches
+    is not entered.
     """
     root = Path(root)
+    exclude = normalise_excludes(exclude)
     if root.is_file():
         return sorted(set(_scan_file(root, root.name)))
     findings: list[Finding] = []
@@ -57,8 +60,19 @@ def _walk(root: Path, exclude: Sequence[str]) -> Iterator[str]:
             yield rel
 
 
+def normalise_excludes(patterns: Sequence[str]) -> list[str]:
+    """"./examples/" and "examples" mean the same directory."""
+    cleaned = (p.strip().removeprefix("./").rstrip("/") for p in patterns)
+    return [p for p in cleaned if p]
+
+
 def _excluded(rel: str, patterns: Sequence[str]) -> bool:
-    return any(fnmatch.fnmatch(rel, pattern) for pattern in patterns)
+    parts = rel.split("/")
+    return any(
+        fnmatch.fnmatch(rel, pattern)
+        or ("/" not in pattern and any(fnmatch.fnmatch(part, pattern) for part in parts))
+        for pattern in patterns
+    )
 
 
 def _scan_file(full: Path, rel: str) -> list[Finding]:

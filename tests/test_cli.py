@@ -72,3 +72,8 @@ def test_runs_as_module(tmp_path):
     )
     assert result.returncode == 0
     assert "0 blocker(s)" in result.stdout
+
+
+def test_markdown_report_lists_cli_excludes(tmp_path, capsys):
+    main([str(tmp_path), "--format", "markdown", "--exclude", "examples/"])
+    assert "Excluded by request: `examples`." in capsys.readouterr().out
