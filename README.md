@@ -23,6 +23,28 @@ The ROCm-specific paths are written against documented behaviour but have not
 been run on real hardware. `docs/RUNBOOK.md` is the checklist for validating
 them on AMD Developer Cloud, and this table gets updated when they pass.
 
+## Portability scanner
+
+`rocm_portscan` answers "will this PyTorch repository run on ROCm?" without an
+AMD GPU. It reads dependencies, build flags, Dockerfiles, CUDA sources and
+Python (via the AST, never by importing it).
+
+```bash
+python -m rocm_portscan path/to/repo                    # terminal
+python -m rocm_portscan path/to/repo --format markdown  # a postable report
+python -m rocm_portscan path/to/repo --min-tier info --exclude 'third_party'
+```
+
+Findings come in three tiers. **BLOCKER** means it breaks, and every blocker
+rule cites a proof: a vendor doc, or a check in `rocm_portscan/proofs.py` that
+CI runs on every push. **REVIEW** means worth checking. **INFO** means it is
+portable, with a note on why. Exit code 1 means blockers were found, so it
+works as a CI gate.
+
+Every finding comes from static analysis and nothing here has run on AMD
+hardware yet. The rule list and the reasoning behind each tier are in
+`docs/superpowers/specs/2026-09-21-rocm-portability-scanner-design.md`.
+
 ## Quick start
 
 ```bash
@@ -89,6 +111,7 @@ docker/docker-compose.yml device plumbing for ROCm
 scripts/make_report.py    forum post from a real run; refuses to fake one
 docs/RUNBOOK.md           validating on AMD Developer Cloud
 docs/AMD-COMMUNITY-MAP.md where the AMD dev community has gaps
+rocm_portscan/            static ROCm portability scanner, no GPU needed
 ```
 
 ## Credits
