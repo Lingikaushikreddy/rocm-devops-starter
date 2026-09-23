@@ -1,0 +1,4 @@
+[project]
+name = "demo"
+description = "Reach the apex of performance"
+dependencies = ["torch>=2; extra == 'apex'"]

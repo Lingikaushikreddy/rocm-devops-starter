@@ -1,0 +1,7 @@
+[project]
+name = "demo"
+dependencies = ["numpy"]
+
+[[tool.mypy.overrides]]
+module = ["cupy.cuda.*"]
+ignore_missing_imports = true

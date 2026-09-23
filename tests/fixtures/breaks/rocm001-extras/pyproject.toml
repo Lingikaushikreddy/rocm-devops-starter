@@ -1,0 +1,5 @@
+[project]
+name = "demo"
+
+[project.optional-dependencies]
+fused = ["apex"]

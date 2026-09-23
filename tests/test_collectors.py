@@ -1,3 +1,4 @@
+import ast
 import warnings
 
 from rocm_portscan.collectors import collect_python, collect_text
@@ -89,3 +90,24 @@ def test_warnings_from_scanned_code_are_not_printed():
         warnings.simplefilter("always")
         collect_python("m.py", 'import re\nPAT = re.compile("\\d+")\n')
     assert [str(w.message) for w in caught] == []
+
+
+def test_parser_recursion_error_skips_the_file(monkeypatch):
+    # Which inputs are too deep depends on the Python version, so raise it
+    # directly rather than hunting for an input every interpreter rejects.
+    def too_deep(source):
+        raise RecursionError("maximum recursion depth exceeded during ast construction")
+
+    # Restore ast.parse before asserting: pytest uses it to report failures.
+    with monkeypatch.context() as m:
+        m.setattr(ast, "parse", too_deep)
+        try:
+            result = collect_python("deep.py", "import apex\n")
+        except RecursionError:
+            result = "RecursionError escaped collect_python"
+    assert result == []
+
+
+def test_pathologically_deep_python_does_not_crash():
+    source = "x = " + "+".join(["1"] * 200_000) + "\nimport apex\n"
+    assert isinstance(collect_python("deep.py", source), list)

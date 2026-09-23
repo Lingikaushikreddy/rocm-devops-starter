@@ -36,3 +36,8 @@ def test_only_rocm008_is_a_blocker():
     # deliberately, in the same commit as the evidence.
     blockers = sorted(r.id for r in RULES.values() if r.tier is Tier.BLOCKER)
     assert blockers == ["ROCM008"]
+
+
+def test_fp8_message_covers_both_dtypes_it_matches():
+    message = RULES["ROCM005"].message
+    assert "e4m3fn" in message and "e5m2" in message
