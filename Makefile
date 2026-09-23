@@ -1,4 +1,4 @@
-.PHONY: help probe smoke report lint test survey build up clean
+.PHONY: help probe smoke report lint test build up clean
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -17,9 +17,6 @@ lint:  ## Lint the scripts and the scanner
 
 test:  ## Run the scanner test suite
 	python -m pytest -q
-
-survey:  ## Rescan the 12 repositories in docs/SURVEY-2026-09.md
-	scripts/run_survey.sh
 
 build:  ## Build the ROCm image
 	docker compose -f docker/docker-compose.yml build
