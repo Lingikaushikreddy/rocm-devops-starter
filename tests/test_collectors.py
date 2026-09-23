@@ -47,3 +47,34 @@ def test_python_line_number_and_snippet():
 
 def test_attribute_named_like_a_package_does_not_fire():
     assert collect_python("m.py", "cfg.apex = True\nx = obj.flash_attn\n") == []
+
+
+def rule_lines(findings, rule_id):
+    return [f.line for f in findings if f.rule_id == rule_id]
+
+
+def test_once_per_file_rules_report_first_line_only():
+    source = "import torch\ntorch.cuda.synchronize()\nx = torch.cuda.current_device()\n"
+    assert rule_lines(collect_python("m.py", source), "ROCM201") == [2]
+
+
+def test_neg_inf_fires_at_each_fill_when_file_has_fp8():
+    source = (
+        "import torch\n"
+        "a = x.masked_fill(m, float('-inf'))\n"
+        "b = y.masked_fill(m, -float('inf'))\n"
+        "c = z.to(torch.float8_e4m3fn)\n"
+    )
+    found = collect_python("m.py", source)
+    assert rule_lines(found, "ROCM006") == [2, 3]
+    assert rule_lines(found, "ROCM005") == [4]
+
+
+def test_fnuz_dtypes_are_not_flagged():
+    source = "import torch\nz = x.to(torch.float8_e4m3fnuz)\nw = y.to(torch.float8_e5m2fnuz)\n"
+    assert collect_python("m.py", source) == []
+
+
+def test_nccl_is_case_insensitive_and_other_backends_are_silent():
+    assert rule_lines(collect_python("d.py", "init_process_group('NCCL')\n"), "ROCM200") == [1]
+    assert collect_python("d.py", "init_process_group(backend='gloo')\n") == []

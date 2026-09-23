@@ -109,6 +109,9 @@ _CALL_RULES = {
     "inline_asm_elementwise": "ROCM105",
 }
 
+# The OCP formats. Their fnuz counterparts are what gfx942 executes.
+_FP8_FN_DTYPES = frozenset({"float8_e4m3fn", "float8_e5m2"})
+
 
 def collect_python(path: str, source: str) -> list[Finding]:
     """Findings in a Python file. Never imports or executes it."""
@@ -119,9 +122,23 @@ def collect_python(path: str, source: str) -> list[Finding]:
         # repositories. None of them can be judged, and none should stop a scan.
         return []
     hits: set[tuple[str, int]] = set()
+    fp8_lines: list[int] = []
+    neg_inf_lines: list[int] = []
+    first_seen: dict[str, int] = {}
     for node in ast.walk(tree):
         for rule_id in _node_rules(node):
             hits.add((rule_id, node.lineno))
+        if isinstance(node, ast.Attribute) and node.attr in _FP8_FN_DTYPES:
+            fp8_lines.append(node.lineno)
+        if _is_negative_infinity(node):
+            neg_inf_lines.append(node.lineno)
+        for rule_id in _once_per_file_rules(node):
+            first_seen[rule_id] = min(first_seen.get(rule_id, node.lineno), node.lineno)
+    hits.update(("ROCM005", line) for line in fp8_lines)
+    # ROCM006 is a same-file heuristic, not dataflow: the rule's message says so.
+    if fp8_lines:
+        hits.update(("ROCM006", line) for line in neg_inf_lines)
+    hits.update(first_seen.items())
     lines = source.splitlines()
     return sorted(
         Finding(path, line, rule_id, _snippet(lines[line - 1]))
@@ -155,7 +172,10 @@ def _node_rules(node: ast.AST) -> list[str]:
             return ["ROCM104"]
         return []
     if isinstance(node, ast.Call):
-        rule_id = _CALL_RULES.get(_call_name(node))
+        name = _call_name(node)
+        if name == "init_process_group" and _names_nccl(node):
+            return ["ROCM200"]
+        rule_id = _CALL_RULES.get(name)
         return [rule_id] if rule_id else []
     return []
 
@@ -166,3 +186,49 @@ def _call_name(node: ast.Call) -> str:
     if isinstance(node.func, ast.Attribute):
         return node.func.attr
     return ""
+
+
+def _names_nccl(call: ast.Call) -> bool:
+    candidates = call.args[:1] + [k.value for k in call.keywords if k.arg == "backend"]
+    return any(
+        isinstance(c, ast.Constant) and isinstance(c.value, str) and c.value.lower() == "nccl"
+        for c in candidates
+    )
+
+
+def _once_per_file_rules(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "torch":
+        if node.attr == "cuda":
+            return ["ROCM201"]
+        if node.attr in ("float16", "half"):
+            return ["ROCM202"]
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "half"
+        and not node.args
+    ):
+        return ["ROCM202"]
+    return []
+
+
+def _is_negative_infinity(node: ast.AST) -> bool:
+    """float('-inf'), -float('inf'), -math.inf, -torch.inf, -np.inf."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        operand = node.operand
+        return (isinstance(operand, ast.Attribute) and operand.attr == "inf") or _is_float_literal(
+            operand, {"inf", "+inf", "infinity"}
+        )
+    return _is_float_literal(node, {"-inf", "-infinity"})
+
+
+def _is_float_literal(node: ast.AST, spellings: set[str]) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "float"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value.strip().lower() in spellings
+    )

@@ -38,3 +38,10 @@ def test_portable_fixture_does_not_trip_its_rule(case):
 def test_portable_tree_has_zero_blockers():
     blockers = [f for f in scan(PORTABLE) if RULES[f.rule_id].tier is Tier.BLOCKER]
     assert blockers == []
+
+
+def test_every_rule_has_both_fixture_kinds():
+    have_breaks = {rule_of(c) for c in cases(BREAKS)}
+    have_portable = {rule_of(c) for c in cases(PORTABLE)}
+    assert sorted(set(RULES) - have_breaks) == [], "rules with no breaks/ fixture"
+    assert sorted(set(RULES) - have_portable) == [], "rules with no portable/ fixture"
