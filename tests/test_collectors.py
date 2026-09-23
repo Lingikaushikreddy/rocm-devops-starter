@@ -1,4 +1,4 @@
-from rocm_portscan.collectors import collect_text
+from rocm_portscan.collectors import collect_python, collect_text
 from rocm_portscan.rules import Finding
 
 
@@ -31,3 +31,19 @@ def test_nested_requirements_files_are_dependency_files():
 def test_cuda_source_reports_once_at_line_one():
     found = collect_text("csrc/ops.cuh", "#pragma once\n__device__ int f();\n")
     assert found == [Finding("csrc/ops.cuh", 1, "ROCM003", "CUDA source file")]
+
+
+def test_unparseable_python_is_skipped():
+    assert collect_python("py2.py", "import apex\nprint 'hello'\n") == []
+    assert collect_python("tmpl.py", "import {{ cookiecutter.pkg }}\n") == []
+
+
+def test_python_line_number_and_snippet():
+    source = "import os\n\nimport pynvml  # telemetry\n"
+    assert collect_python("m.py", source) == [
+        Finding("m.py", 3, "ROCM007", "import pynvml  # telemetry")
+    ]
+
+
+def test_attribute_named_like_a_package_does_not_fire():
+    assert collect_python("m.py", "cfg.apex = True\nx = obj.flash_attn\n") == []

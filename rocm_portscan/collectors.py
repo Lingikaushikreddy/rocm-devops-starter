@@ -8,6 +8,7 @@ goes through line-based text matching.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import PurePosixPath
 
@@ -89,3 +90,79 @@ def _line_rules(name: str) -> list[tuple[re.Pattern[str], str]]:
 
 def _snippet(raw: str) -> str:
     return raw.strip()[:120]
+
+
+# Top-level import name -> rule.
+_IMPORT_RULES = {
+    "apex": "ROCM001",
+    "transformer_engine": "ROCM002",
+    "pynvml": "ROCM007",
+    "flash_attn": "ROCM101",
+    "bitsandbytes": "ROCM102",
+    "xformers": "ROCM107",
+}
+
+# Called function name (last dotted segment) -> rule.
+_CALL_RULES = {
+    "CUDAExtension": "ROCM003",
+    "get_device_capability": "ROCM100",
+    "inline_asm_elementwise": "ROCM105",
+}
+
+
+def collect_python(path: str, source: str) -> list[Finding]:
+    """Findings in a Python file. Never imports or executes it."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        # Python 2 files, templates and stray null bytes all turn up in real
+        # repositories. None of them can be judged, and none should stop a scan.
+        return []
+    hits: set[tuple[str, int]] = set()
+    for node in ast.walk(tree):
+        for rule_id in _node_rules(node):
+            hits.add((rule_id, node.lineno))
+    lines = source.splitlines()
+    return sorted(
+        Finding(path, line, rule_id, _snippet(lines[line - 1]))
+        for rule_id, line in hits
+    )
+
+
+def _node_rules(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.Import):
+        return [
+            _IMPORT_RULES[alias.name.split(".")[0]]
+            for alias in node.names
+            if alias.name.split(".")[0] in _IMPORT_RULES
+        ]
+    if isinstance(node, ast.ImportFrom):
+        if node.level or not node.module:
+            return []  # relative import: a local module, not the package
+        found = []
+        top = node.module.split(".")[0]
+        if top in _IMPORT_RULES:
+            found.append(_IMPORT_RULES[top])
+        if node.module == "torch.cuda" and any(a.name == "nvtx" for a in node.names):
+            found.append("ROCM104")
+        return found
+    if isinstance(node, ast.Attribute):
+        if (
+            node.attr == "nvtx"
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "cuda"
+        ):
+            return ["ROCM104"]
+        return []
+    if isinstance(node, ast.Call):
+        rule_id = _CALL_RULES.get(_call_name(node))
+        return [rule_id] if rule_id else []
+    return []
+
+
+def _call_name(node: ast.Call) -> str:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return ""

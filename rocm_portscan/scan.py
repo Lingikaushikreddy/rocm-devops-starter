@@ -12,7 +12,7 @@ import os
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
-from .collectors import collect_text
+from .collectors import collect_python, collect_text
 from .rules import Finding
 
 MAX_BYTES = 2_000_000
@@ -71,4 +71,7 @@ def _scan_file(full: Path, rel: str) -> list[Finding]:
     if b"\0" in data[:8192]:
         return []
     text = data.decode("utf-8", errors="replace")
-    return collect_text(rel, text)
+    found = collect_text(rel, text)
+    if rel.endswith(".py"):
+        found += collect_python(rel, text)
+    return found
