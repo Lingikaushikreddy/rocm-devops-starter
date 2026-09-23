@@ -1,7 +1,7 @@
 # ROCm portability scanner — design
 
 **Date:** 2026-09-21
-**Status:** approved, not yet implemented
+**Status:** approved, revised 2026-09-23 (see Revision log), not yet implemented
 **Repo:** rocm-devops-starter
 
 ## Problem
@@ -99,8 +99,9 @@ both halves:
   comment or docstring.
 - **Text** for everything else: `requirements*.txt`, `pyproject.toml`,
   `setup.py` build flags, `Dockerfile*`, `*.cu`, `*.cuh`, shell scripts. These
-  carry real blockers (`apex` pinned in requirements, `-gencode
-  arch=compute_90` in setup.py, `FROM nvidia/cuda`) that no AST will ever see.
+  carry real portability signals (`cupy-cuda12x` pinned in requirements,
+  `-gencode arch=compute_90` in setup.py, `FROM nvidia/cuda`) that no AST will
+  ever see.
 
 Data flow: `scan.py` walks the tree, dispatches each file to the right
 collector, collectors emit `Finding(rule, path, line, snippet)`, `report.py`
@@ -113,22 +114,26 @@ no logic about severity.
 
 | id | what | proof |
 |---|---|---|
-| ROCM001 | `apex` dependency | doc |
-| ROCM003 | `.cu`/`.cuh` sources or `CUDAExtension` | doc |
-| ROCM004 | `-gencode arch=compute_XX` / `sm_XX` nvcc flags | doc |
-| ROCM007 | `pynvml` / `nvidia-ml-py` | doc |
-| ROCM008 | `cupy-cuda*` wheel pin | doc |
+| ROCM008 | `cupy-cuda*` wheel pin | `doc:https://docs.cupy.dev/en/stable/install.html` |
 
-Each is a hard dependency or a toolchain flag with no ROCm equivalent: matching
-the pattern means the build or import fails, full stop.
+A `cupy-cuda*` wheel is built against CUDA and cannot drive an AMD GPU. CuPy's
+install docs route AMD users to a different package (`amd-cupy`, from AMD's
+own index, section "Using CuPy on AMD GPU (experimental)"). The citation shows
+the ROCm path is a separate package rather than stating the incompatibility in
+one sentence; that is judged sufficient because the package name itself names
+the toolkit.
 
 **REVIEW**
 
 | id | what | proof |
 |---|---|---|
+| ROCM001 | `apex` dependency | — |
 | ROCM002 | `transformer_engine` dependency | — |
+| ROCM003 | `.cu`/`.cuh` sources or `CUDAExtension` | — |
+| ROCM004 | `-gencode arch=compute_XX` / `sm_XX` nvcc flags | — |
 | ROCM005 | hardcoded `float8_e4m3fn` / `float8_e5m2` | selftest |
-| ROCM006 | `-inf` mask fill co-located with fp8 dtypes | selftest |
+| ROCM006 | `-inf` mask fill in the same file as fp8 dtypes | selftest |
+| ROCM007 | `pynvml` / `nvidia-ml-py` | — |
 | ROCM100 | `get_device_capability()` comparisons | — |
 | ROCM101 | `flash_attn` | — |
 | ROCM102 | `bitsandbytes` | — |
@@ -138,7 +143,7 @@ the pattern means the build or import fails, full stop.
 | ROCM106 | `--gpus all` / nvidia-docker | — |
 | ROCM107 | `xformers` | — |
 
-Two of these were `BLOCKER` in the first draft and were demoted on review:
+Why each non-obvious one is `REVIEW` and not `BLOCKER`:
 
 - **ROCM005/ROCM006 (fp8).** The proof is solid — `e4m3fnuz` caps at 240 rather
   than 448 and has no infinity, so an out-of-range weight and an `-inf` mask
@@ -149,11 +154,31 @@ Two of these were `BLOCKER` in the first draft and were demoted on review:
   behaviour, uncertain applicability, therefore `REVIEW`.
 - **ROCM006 detection is a heuristic.** Proving "an `-inf` fill reaches an fp8
   tensor" needs dataflow analysis this tool does not do. It fires on
-  co-occurrence within a file, which is suggestive, not conclusive — another
-  reason it cannot be a blocker.
-- **ROCM002 (transformer_engine).** Demoted because the author has not
-  confirmed the current state of ROCm support and will not assert a blocker
-  from memory. Promote it only with a citation.
+  co-occurrence within a file, and its message must say exactly that: "`-inf`
+  and an fp8 dtype appear in the same file; check whether the fill reaches an
+  fp8 tensor." It never claims the fill does.
+- **ROCM001 (apex).** AMD maintains a ROCm fork, `github.com/ROCm/apex`
+  (active; last push 2026-08-19). Building NVIDIA's apex from source fails on
+  ROCm, but an `apex` import says nothing about which one is installed. Check
+  which apex is installed and which of its fused kernels the code uses.
+- **ROCM002 (transformer_engine).** The author has not confirmed the current
+  state of ROCm support and will not assert a blocker from memory. Promote it
+  only with a citation.
+- **ROCM003 (CUDA sources / `CUDAExtension`).** On ROCm,
+  `torch.utils.cpp_extension` hipifies CUDA sources automatically
+  (`hipify_python` call; `_hipify_compile_flags` rewrites `nvcc` flags), so
+  most extensions built this way compile unchanged. What hipify does *not*
+  translate is the real risk: inline PTX `asm(...)`, and code assuming a warp
+  of 32 (CDNA wavefronts are 64). The message points at those.
+- **ROCM004 (`-gencode` flags).** Under a ROCm build these flags are passed to
+  `hipcc` unchanged (`_hipify_compile_flags` only rewrites flags containing
+  `CUDA`). Whether `hipcc` then rejects them is unverified. Promote to
+  `BLOCKER` only after running `hipcc` on AMD hardware and recording the
+  result.
+- **ROCM007 (pynvml).** NVML cannot see AMD GPUs, so whatever pynvml provides
+  is lost. But much code wraps `nvmlInit()` in `try/except` for exactly this
+  case, so importing it is not a certain failure. The ROCm equivalent is
+  `amdsmi`.
 
 **INFO**
 
@@ -197,9 +222,30 @@ Existing CI gains a `portscan` job running the suite on 3.10 and 3.12.
 
 ## Risks
 
-- **False positives are the whole risk.** Mitigated by tiering, the portable
-  fixture directory, and publishing only blockers.
+- **False positives are the whole risk.** Mitigated by tiering and the
+  portable fixture directory. Published reports state blockers as breaks and
+  present every `REVIEW` finding as "worth checking", never as "breaks on
+  ROCm". With one `BLOCKER` rule, most published findings will be `REVIEW`,
+  which is the honest shape for a tool that has not run on AMD hardware.
 - **Rule rot.** Mitigated by executable proofs failing CI when they stop
   reproducing.
 - **Scanning NeMo is a large job.** If the run is unwieldy, scope the published
   findings to a subset and say which subset.
+
+## Revision log
+
+**2026-09-23: four of the five original BLOCKERs demoted to REVIEW.** The first
+draft marked ROCM001, 003, 004, 007 and 008 as `BLOCKER` with `doc` proofs, but
+the citations were written from memory. They were then checked against sources:
+
+- ROCM003: false. `torch/utils/cpp_extension.py` (pytorch `main`) hipifies
+  `CUDAExtension` sources on ROCm.
+- ROCM001: false as stated. `ROCm/apex` exists and is maintained.
+- ROCM004: unverified. Flags reach `hipcc` unchanged; its reaction is unknown.
+- ROCM007: behaviour is real, but breakage is not certain, so it fails the
+  tier test.
+- ROCM008: holds, with the CuPy install docs as citation.
+
+This is the failure the proof requirement exists to catch: a `doc` proof must be
+a URL someone opened, not a claim recalled. The rules test should therefore
+require `doc:` proofs to be `https://` URLs, not bare labels.
