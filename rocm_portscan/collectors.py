@@ -185,6 +185,13 @@ _CALL_RULES = {
 _FP8_FN_DTYPES = frozenset({"float8_e4m3fn", "float8_e5m2"})
 _FP8_FNUZ_DTYPES = frozenset({"float8_e4m3fnuz", "float8_e5m2fnuz"})
 
+# How a conditional that picks an fnuz dtype decides. Only gfx94x runs fnuz,
+# so a gfx94 check (or a helper named for fnuz) is right; a ROCm-wide check
+# such as torch.version.hip is wrong from gfx950 on.
+_ARCH_KEYED = re.compile(r"gfx94")
+_FNUZ_HELPER = re.compile(r"fnuz", re.IGNORECASE)
+_ROCM_WIDE = re.compile(r"(?<![a-z])hip|rocm", re.IGNORECASE)
+
 # setup() keywords whose strings are requirement specifiers.
 _REQUIREMENT_KEYWORDS = frozenset(
     {"install_requires", "setup_requires", "tests_require", "extras_require"}
@@ -240,9 +247,39 @@ def collect_python(path: str, source: str) -> list[Finding]:
             neg_inf_lines.append(node.lineno)
         for rule_id in _once_per_file_rules(node):
             first_seen[rule_id] = min(first_seen.get(rule_id, node.lineno), node.lineno)
-    # A line that also names the fnuz dtype is choosing between the two, e.g.
-    # "float8_e4m3fnuz if torch.version.hip else float8_e4m3fn".
-    hits.update(("ROCM005", line) for line in fp8_lines if line not in fnuz_lines)
+    # Code that chooses between fnuz and OCP fp8 is not hardcoding either, so
+    # ROCM005 stays quiet across the enclosing function, or the module when
+    # the choice is at top level: the OCP dtype is usually a default set
+    # before the if or an early-return fallback after it. A ROCm-wide choice
+    # is ROCM108 instead. A literal table naming both formats is a lookup.
+    whole_file = (1, len(source.splitlines()) or 1)
+    exempt: list[tuple[int, int]] = [
+        (node.lineno, node.end_lineno or node.lineno)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Dict, ast.List, ast.Tuple, ast.Set))
+        and any(
+            isinstance(n, ast.Attribute) and n.attr in _FP8_FNUZ_DTYPES
+            for n in ast.walk(node)
+        )
+    ]
+    functions = [
+        (f.lineno, f.end_lineno or f.lineno)
+        for f in ast.walk(tree)
+        if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    for node in ast.walk(tree):
+        kind = _fnuz_choice(node)
+        if kind is None:
+            continue
+        if kind == "rocm":
+            hits.add(("ROCM108", node.lineno))
+        enclosing = [r for r in functions if r[0] <= node.lineno <= r[1]]
+        exempt.append(min(enclosing, key=lambda r: r[1] - r[0]) if enclosing else whole_file)
+    hits.update(
+        ("ROCM005", line)
+        for line in fp8_lines
+        if line not in fnuz_lines and not any(a <= line <= b for a, b in exempt)
+    )
     # ROCM006 is a same-file heuristic, not dataflow: the rule's message says so.
     if fp8_lines:
         hits.update(("ROCM006", line) for line in neg_inf_lines)
@@ -286,6 +323,28 @@ def _node_rules(node: ast.AST) -> list[str]:
         rule_id = _CALL_RULES.get(name)
         return [rule_id] if rule_id else []
     return []
+
+
+def _fnuz_choice(node: ast.AST) -> str | None:
+    """For a conditional that selects an fnuz dtype: "arch", "rocm" or "other"."""
+    if isinstance(node, ast.IfExp):
+        branches: list[ast.AST] = [node.body, node.orelse]
+    elif isinstance(node, ast.If):
+        branches = [*node.body, *node.orelse]
+    else:
+        return None
+    if not any(
+        isinstance(n, ast.Attribute) and n.attr in _FP8_FNUZ_DTYPES
+        for branch in branches
+        for n in ast.walk(branch)
+    ):
+        return None
+    test = ast.unparse(node.test)
+    if _ARCH_KEYED.search(ast.unparse(node)) or _FNUZ_HELPER.search(test):
+        return "arch"
+    if _ROCM_WIDE.search(test):
+        return "rocm"
+    return "other"
 
 
 def _call_name(node: ast.Call) -> str:

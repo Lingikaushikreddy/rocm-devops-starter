@@ -142,6 +142,7 @@ the toolkit.
 | ROCM105 | Triton kernels with CUDA-specific intrinsics | — |
 | ROCM106 | `--gpus all` / nvidia-docker | — |
 | ROCM107 | `xformers` | — |
+| ROCM108 | fnuz fp8 chosen by `torch.version.hip` rather than GPU arch | doc |
 
 Why each non-obvious one is `REVIEW` and not `BLOCKER`:
 
@@ -249,3 +250,15 @@ the citations were written from memory. They were then checked against sources:
 This is the failure the proof requirement exists to catch: a `doc` proof must be
 a URL someone opened, not a claim recalled. The rules test should therefore
 require `doc:` proofs to be `https://` URLs, not bare labels.
+
+**2026-09-24: ROCM005's exemption was too generous; ROCM108 added.** Forum
+feedback (Hakob_Arzumanyan, topic 1085) pointed out that the portable fixture
+`fnuz if torch.version.hip else fn` is right only on gfx94x. vLLM
+(`platforms/rocm.py`, `is_fp8_fnuz`) and PyTorch (`_meta_registrations.py`)
+both select fnuz only when the arch contains `gfx94`; gfx950 (MI355X) and RDNA4
+use OCP e4m3fn. Checked in both sources before changing anything. A fnuz choice
+keyed ROCm-wide is now ROCM108 (REVIEW, vLLM cited); an arch-keyed choice stays
+silent. ROCM005 also now stays quiet across the function (or module) that makes
+the choice, and inside a literal table naming both formats. Rescanning the
+2026-09 survey changed no numbers; the pattern does occur in current
+pytorch/ao and tile-ai/tilelang benchmark scripts.
