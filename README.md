@@ -41,6 +41,9 @@ CI runs on every push. **REVIEW** means worth checking. **INFO** means it is
 portable, with a note on why. Exit code 1 means blockers were found, so it
 works as a CI gate.
 
+`docs/SURVEY-2026-09.md` has the results of scanning 12 popular PyTorch
+repositories, pinned to commits; `make survey` reproduces them.
+
 Every finding comes from static analysis and nothing here has run on AMD
 hardware yet. The rule list and the reasoning behind each tier are in
 `docs/superpowers/specs/2026-09-21-rocm-portability-scanner-design.md`.
@@ -112,6 +115,7 @@ scripts/make_report.py    forum post from a real run; refuses to fake one
 docs/RUNBOOK.md           validating on AMD Developer Cloud
 docs/AMD-COMMUNITY-MAP.md where the AMD dev community has gaps
 rocm_portscan/            static ROCm portability scanner, no GPU needed
+scripts/run_survey.sh     reproduces docs/SURVEY-2026-09.md
 ```
 
 ## Credits
