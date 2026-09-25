@@ -259,6 +259,7 @@ both select fnuz only when the arch contains `gfx94`; gfx950 (MI355X) and RDNA4
 use OCP e4m3fn. Checked in both sources before changing anything. A fnuz choice
 keyed ROCm-wide is now ROCM108 (REVIEW, vLLM cited); an arch-keyed choice stays
 silent. ROCM005 also now stays quiet across the function (or module) that makes
-the choice, and inside a literal table naming both formats. Rescanning the
-2026-09 survey changed no numbers; the pattern does occur in current
-pytorch/ao and tile-ai/tilelang benchmark scripts.
+the choice, and inside a literal table naming both formats. ROCM108 fires in
+none of the 12 survey repositories and ROCM005's counts there are unchanged;
+the pattern does occur in current pytorch/ao and tile-ai/tilelang benchmark
+scripts, and both are caught.
