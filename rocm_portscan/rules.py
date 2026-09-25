@@ -165,6 +165,17 @@ _RULES = (
         "attention ops this code uses.",
     ),
     Rule(
+        "ROCM108",
+        Tier.REVIEW,
+        "fnuz fp8 chosen by `torch.version.hip`, not by GPU arch",
+        "Only gfx94x (MI300) executes the fnuz fp8 formats. Other AMD GPUs "
+        "with fp8, including gfx950 (MI355X) and RDNA4, use OCP e4m3fn, so a "
+        "ROCm-wide switch picks the wrong format past MI300. Key on the arch "
+        'instead, as vLLM does: "gfx94" in gcnArchName.',
+        proof="doc:https://github.com/vllm-project/vllm/blob/"
+        "34ee85d5ca0728a36f687f5f0c7eb3531c2cdd12/vllm/platforms/rocm.py#L1084-L1094",
+    ),
+    Rule(
         "ROCM200",
         Tier.INFO,
         '`init_process_group("nccl")`',
